@@ -3,3 +3,6 @@
 ################################################################################
 
 /Files
+/GZip/.vs
+/GZip/GZipTest/obj
+/GZip/GZipTest/bin/Debug/netcoreapp3.0

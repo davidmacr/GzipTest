@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "GZipTest": {
+      "commandName": "Project",
+      "commandLineArgs": "deCOmprESS \"C:\\github\\GzipTest\\Files\\Test.xml_Blocks\\Test.xml.gz\""
+    }
+  }
+}
