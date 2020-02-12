@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using GZipTest.Data;
 using GZipTest.Enums;
 using GZipTest.Processor;
 
@@ -9,8 +10,15 @@ namespace GZipTest
 {
     internal class ApplicationStarter
     {
+        /// <summary>
+        /// Number of parameters required by the application
+        /// </summary>
         const int ArgumentCount = 2;
-
+        /// <summary>
+        /// Entry point of the app
+        /// </summary>
+        /// <param name="args">list of arguments</param>
+        /// <returns><c>ExitCode</c> with the result of the operations</returns>
         internal int StartApp(string[] args)
         {
             var isValid = ValidateParamters(args);
@@ -24,12 +32,19 @@ namespace GZipTest
             var startTime = DateTime.Now;
             var manager = new ProcessManager(actionToExecute);
             ExitCode returnValue = manager.RunTask();
-            var endTime = DateTime.Now;
-            Console.WriteLine($"Started at {startTime.ToString()} -- Ended at: {endTime.ToString()}");
+            if (returnValue == ExitCode.OK)
+            {
+                var endTime = DateTime.Now;
+                Console.WriteLine($"Started at {startTime.ToString()} -- Ended at: {endTime.ToString()}");
+            }
             return (int)returnValue;
         }
 
-
+        /// <summary>
+        /// Check that parameters has valid values
+        /// </summary>
+        /// <param name="args">List of parameters</param>
+        /// <returns><c>ExitCode</c> with the result of the operations</returns>
         protected ExitCode ValidateParamters(string[] args)
         {
             if (args.Length < ArgumentCount)
@@ -57,16 +72,14 @@ namespace GZipTest
                 return ExitCode.InvalidFileName;
             }
 
-            if (!(File.Exists(args[1])))
-            {
-                Console.WriteLine($"File: {args[1]}, does not exist.");
-                return ExitCode.FileNameDoesNotExist;
-            }
-
             return ExitCode.OK;
         }
 
-
+        /// <summary>
+        /// Create an instance of object <c>Argument</c> with recieve parameters
+        /// </summary>
+        /// <param name="args">List of parameters</param>
+        /// <returns><c>Argument</c> with data received</returns>
         protected Argument ParseParameters(string[] args)
         {
             var data = new Argument()
@@ -79,15 +92,14 @@ namespace GZipTest
                 },
                 FileToProcess = args[1]
             };
-            data.CleanUpOutput = false;
-            if (args.Length == 3)
-            {
-                data.CleanUpOutput = "Y,y".Contains(args[2]);
-            }
+
 
             return data;
         }
 
+        /// <summary>
+        /// Shows application parameters and examples
+        /// </summary>
         protected void ShowApplicationExample()
         {
             Console.WriteLine();

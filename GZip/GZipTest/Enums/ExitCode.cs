@@ -4,6 +4,9 @@ using System.Text;
 
 namespace GZipTest.Enums
 {
+    /// <summary>
+    /// List exit codes of the application
+    /// </summary>
     public enum ExitCode:int
     {
         OK = 0,
@@ -13,5 +16,6 @@ namespace GZipTest.Enums
         InvalidFileName = 4,
         ThreadsCancelledByError = 5,
         FileNameDoesNotExist = 6,
+        InputFileDoesNotExists = 7,
     }
 }
