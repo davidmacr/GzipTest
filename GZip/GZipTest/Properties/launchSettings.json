@@ -2,7 +2,7 @@
   "profiles": {
     "GZipTest": {
       "commandName": "Project",
-      "commandLineArgs": "deCOmprESS \"C:\\github\\GzipTest\\Files\\Manifest.xml\""
+      "commandLineArgs": "deCOmprESS \"C:\\Github\\GzipTest\\Files\\base01_database.bak\""
     }
   }
 }

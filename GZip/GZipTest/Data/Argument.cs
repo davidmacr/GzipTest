@@ -6,12 +6,20 @@ using System.Text;
 
 namespace GZipTest.Data
 {
-
     public class Argument
     {
         string _fileToProces;
-        long _ticks = DateTime.Now.Ticks;
+        readonly long _ticks = DateTime.Now.Ticks;
         FileInfo _fileData;
+        readonly string _temporalFolder;
+        
+        public long HeaderSize { get; set; }
+
+        public Argument()
+        {
+            _temporalFolder = Path.GetTempPath();
+        }
+        
         /// <summary>
         /// Has the operation <c>CommandInput</c> that will be exeuted by the application
         /// </summary>
@@ -60,7 +68,7 @@ namespace GZipTest.Data
         {
             get
             {
-                return Path.Join(_fileData.DirectoryName, $"{_fileData.Name}_Blocks");
+                return Path.Join(_temporalFolder, $"{_fileData.Name}_Blocks");
             }
         }
         /// <summary>
@@ -74,6 +82,7 @@ namespace GZipTest.Data
                 return $"{_fileData.FullName}.gz";
             }
         }
+
         /// <summary>
         /// Return the full path of unzip file based on  <c>FileToProcess</c>
         /// </summary>
