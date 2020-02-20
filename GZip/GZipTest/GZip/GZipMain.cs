@@ -46,19 +46,26 @@ namespace GZipTest.GZip
         /// <returns></returns>
         public byte[] GetData(long offset, int required)
         {
-            _readerMutex.WaitOne();
-            if (_fileData == null)
+            byte[] data;
+            try
             {
-                var fileName = _argument.FileToProcess;
-                if (_argument.Command == CommandInput.Decompress)
+                _readerMutex.WaitOne();
+                if (_fileData == null)
                 {
-                    fileName = _argument.ZippedFile;
+                    _fileData = new BinaryReader(File.Open(_argument.FileToProcess, FileMode.Open));
                 }
-                _fileData = new BinaryReader(File.Open(fileName, FileMode.Open));
+                _fileData.BaseStream.Seek(offset, SeekOrigin.Begin);
+                data = _fileData.ReadBytes(required);
             }
-            _fileData.BaseStream.Seek(offset, SeekOrigin.Begin);
-            byte[] data = _fileData.ReadBytes(required);
-            _readerMutex.ReleaseMutex();
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            finally
+            {
+                _readerMutex.ReleaseMutex();
+            }
+
             return data;
         }
 

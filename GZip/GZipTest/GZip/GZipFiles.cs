@@ -78,9 +78,9 @@ namespace GZipTest.GZip
             {
                 Directory.CreateDirectory(_argument.BlocksFolder);
             }
-            if (!File.Exists(_argument.ZippedFile))
+            if (!File.Exists(_argument.OutcomeFile))
             {
-                var file = File.Create(_argument.ZippedFile);
+                var file = File.Create(_argument.OutcomeFile);
                 file.Close();
             }
             var blockName = $"{_argument.BlocksFolder}\\{_fileBlock.Name}";

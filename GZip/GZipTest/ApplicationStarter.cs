@@ -13,7 +13,7 @@ namespace GZipTest
         /// <summary>
         /// Number of parameters required by the application
         /// </summary>
-        const int ArgumentCount = 2;
+        const int ArgumentCount = 3;
         /// <summary>
         /// Entry point of the app
         /// </summary>
@@ -79,6 +79,10 @@ namespace GZipTest
                 case ExitCode.InputFileDoesNotExists:
                     Console.WriteLine($"File to process do not exists, Error Code: {(int)ExitCode.InputFileDoesNotExists}");
                     return 1;
+                case ExitCode.OutcommeFileExists:
+                    Console.WriteLine($"Outcome file exists, Error Code: {(int)ExitCode.OutcommeFileExists}");
+                    return 1;
+
                 default:
                     return 1;
             }
@@ -113,7 +117,17 @@ namespace GZipTest
 
             if (string.IsNullOrEmpty(args[1]))
             {
-                Console.WriteLine("Argument file is not defined");
+                var message = "Original file parameter is not valid";
+                if (command == CommandInput.Decompress) { message = "Archive file parameter is not valid"; }
+                Console.WriteLine(message);
+                return ExitCode.InvalidFileName;
+            }
+
+            if (string.IsNullOrEmpty(args[2]))
+            {
+                var message = "Archive file parameter is not valid";
+                if (command == CommandInput.Decompress) { message = "Deconmpressing file parameter is not valid"; }
+                Console.WriteLine(message);
                 return ExitCode.InvalidFileName;
             }
 
@@ -135,9 +149,9 @@ namespace GZipTest
                     "compress" => CommandInput.Compress,
                     _ => throw new ArgumentException($"Invalid parameter {args[0]}"),
                 },
-                FileToProcess = args[1]
+                FileToProcess = args[1],
+                OutcomeFile = args[2]
             };
-
 
             return data;
         }

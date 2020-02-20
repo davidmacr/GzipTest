@@ -1,8 +1,7 @@
 {
   "profiles": {
     "GZipTest": {
-      "commandName": "Project",
-      "commandLineArgs": "deCOmprESS \"C:\\Github\\GzipTest\\Files\\base01_database.bak\""
+      "commandName": "Project"
     }
   }
 }

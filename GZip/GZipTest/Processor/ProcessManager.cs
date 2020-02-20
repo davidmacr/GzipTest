@@ -114,17 +114,17 @@ namespace GZipTest.Processor
         /// <returns></returns>
         private ExitCode ValidateArguments()
         {
-            var inputFile = _argument.FileToProcess;
-
-            if (_argument.Command == CommandInput.Decompress)
-            {
-                inputFile = _argument.ZippedFile;
-            }
-
-            if (!File.Exists(inputFile))
+            if (!File.Exists(_argument.FileToProcess))
             {
                 return ExitCode.InputFileDoesNotExists;
             }
+
+            if (File.Exists(_argument.OutcomeFile))
+            {
+                return ExitCode.OutcommeFileExists;
+            }
+
+
             return ExitCode.OK;
         }
 
@@ -195,12 +195,12 @@ namespace GZipTest.Processor
         /// <returns><c>ExitCode</c> with the result of the operations</returns>
         private ExitCode ConcatUnZipped(List<FileBlock> blocks)
         {
-            if (!File.Exists(_argument.UnZippedFile))
+            if (!File.Exists(_argument.OutcomeFile))
             {
-                var file = File.Create(_argument.UnZippedFile);
+                var file = File.Create(_argument.OutcomeFile);
                 file.Close();
             }
-            using (FileStream writer = new FileStream(_argument.UnZippedFile, FileMode.Append))
+            using (FileStream writer = new FileStream(_argument.OutcomeFile, FileMode.Append))
             {
                 foreach (var item in blocks)
                 {
@@ -220,10 +220,10 @@ namespace GZipTest.Processor
         {
             var fileBlocks = CreateBlocks();
             InitializeFiles();
-            treadsWriter = new FileStream(_argument.ZippedFile, FileMode.Append);
+            treadsWriter = new FileStream(_argument.OutcomeFile, FileMode.Append);
             if (ProcessBlocks(fileBlocks) == ExitCode.OK)
             {
-                CreateZippedFile(fileBlocks);
+                CreateOutcomeFile(fileBlocks);
             }
             return _threadStatus;
         }
@@ -241,7 +241,7 @@ namespace GZipTest.Processor
 
         private List<FileBlock> GetBlocksFromFiles()
         {
-            using BinaryReader file = new BinaryReader(File.Open(_argument.ZippedFile, FileMode.Open));
+            using BinaryReader file = new BinaryReader(File.Open(_argument.FileToProcess, FileMode.Open));
             file.BaseStream.Seek(0, SeekOrigin.Begin);
             byte[] data = file.ReadBytes(_offset + 2);
             int lenght = BitConverter.ToInt32(data);
@@ -267,9 +267,9 @@ namespace GZipTest.Processor
         /// </summary>
         private void InitializeFiles()
         {
-            if (File.Exists(_argument.ZippedFile))
+            if (File.Exists(_argument.OutcomeFile))
             {
-                File.Delete(_argument.ZippedFile);
+                File.Delete(_argument.OutcomeFile);
             }
 
             if (!Directory.Exists(_argument.BlocksFolder))
@@ -277,7 +277,7 @@ namespace GZipTest.Processor
                 Directory.CreateDirectory(_argument.BlocksFolder);
             }
             var data = Encoding.ASCII.GetBytes(new string(' ', (int)_argument.HeaderSize));
-            FileStream writer = new FileStream(_argument.ZippedFile, FileMode.Create);
+            FileStream writer = new FileStream(_argument.OutcomeFile, FileMode.Create);
             using BinaryWriter streamGenerator = new BinaryWriter(writer);
             streamGenerator.Write(data);
         }
@@ -456,14 +456,14 @@ namespace GZipTest.Processor
         /// Save an object <c>List<FileBlock></c> to a file that will be used for unzip
         /// </summary>
         /// <returns><c>List<FileBlock></c> blocks created during unzip process</returns>
-        private void CreateZippedFile(List<FileBlock> blocks)
+        private void CreateOutcomeFile(List<FileBlock> blocks)
         {
             if (blocks == null) return;
             DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(List<FileBlock>));
             using var blocksData = new MemoryStream();
             serializer.WriteObject(blocksData, blocks);            
             var blockStr = Encoding.Default.GetString(blocksData.ToArray());
-            using FileStream writer = new FileStream(_argument.ZippedFile, FileMode.Open);
+            using FileStream writer = new FileStream(_argument.OutcomeFile, FileMode.Open);
             using BinaryWriter binaryWriter = new BinaryWriter(writer);
             var lenghtAsBits = BitConverter.GetBytes(blockStr.Length);
             writer.Position = 0;

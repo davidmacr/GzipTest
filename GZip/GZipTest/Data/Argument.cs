@@ -74,25 +74,7 @@ namespace GZipTest.Data
         /// <summary>
         /// Return the full path of gzip file based on  <c>FileToProcess</c>
         /// </summary>
-        public string ZippedFile
-        {
-            get
-            {
-                if (_fileData.FullName.EndsWith(".gz")) { return _fileData.FullName; }
-                return $"{_fileData.FullName}.gz";
-            }
-        }
+        public string OutcomeFile { get; set; }
 
-        /// <summary>
-        /// Return the full path of unzip file based on  <c>FileToProcess</c>
-        /// </summary>
-        public string UnZippedFile
-        {
-            get
-            {
-                if (_fileData.Exists) { return $"{_fileData.FullName}_{ _ticks}"; }
-                return _fileData.FullName;
-            }
-        }
     }
 }

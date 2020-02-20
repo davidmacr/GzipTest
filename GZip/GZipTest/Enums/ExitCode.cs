@@ -17,5 +17,6 @@ namespace GZipTest.Enums
         ThreadsCancelledByError = 5,
         FileNameDoesNotExist = 6,
         InputFileDoesNotExists = 7,
+        OutcommeFileExists = 8,
     }
 }
