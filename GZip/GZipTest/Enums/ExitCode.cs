@@ -8,7 +8,7 @@ namespace GZipTest.Enums
     /// List exit codes of the application
     /// </summary>
     public enum ExitCode:int
-    {
+    {   
         OK = 0,
         ApplicationError = 1,
         MissingParameter =2,
@@ -17,5 +17,6 @@ namespace GZipTest.Enums
         ThreadsCancelledByError = 5,
         FileNameDoesNotExist = 6,
         InputFileDoesNotExists = 7,
+        OutcommeFileExists = 8,
     }
 }

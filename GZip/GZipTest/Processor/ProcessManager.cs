@@ -1,52 +1,83 @@
 ﻿using GZipTest.Data;
 using GZipTest.Enums;
+using GZipTest.GZip;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Threading;
 
 namespace GZipTest.Processor
 {
-    internal class ProcessManager
+    public class ProcessManager : IDisposable
     {
         /// <summary>
         /// Current process data
         /// </summary>
         private readonly Argument _argument;
+
         /// <summary>
         /// This control the number of concurrent threads that will be executed concurrenlty
         /// </summary>
         private Semaphore _pool;
+
         /// <summary>
         /// Limit the access to risk code on multithreading
         /// </summary>
-        private readonly Mutex _mut = new Mutex();
+        private readonly Mutex _readerMutex = new Mutex();
+
+        /// <summary>
+        /// Used to control risk code when write the unziped file
+        /// </summary>
+        private readonly Mutex _writerMutex = new Mutex();
+
         /// <summary>
         /// Size used to split the file to zip
         /// </summary>
         long _blockSize = 1048576;
+
         /// <summary>
         /// Number of blocks to process concurrently
         /// </summary>
         int _blockNumber = 64;
+
         /// <summary>
         /// Has the maximun number of concurrent threads, based on number of processor of the computer
         /// </summary>
         int _threadPool = Environment.ProcessorCount >= 2 ? Environment.ProcessorCount - 1 : 1;
+
+        /// <summary>
+        /// reserved bytes for each block
+        /// </summary>
+        readonly long _blockTextSize = 300;
+        readonly int _offset = 10;
+
         /// <summary>
         /// has the overal status of the threads
         /// </summary>
         ExitCode _threadStatus = ExitCode.OK;
+
         /// <summary>
         /// Event handler to rise a cancel on all pending threads
         /// </summary>
         public event EventHandler CancelAllThreads;
 
-        internal ProcessManager(Argument argument)
+        /// <summary>
+        /// Rise to release all resources of threads
+        /// </summary>
+        public event EventHandler DisposeAllThreads;
+
+        FileStream treadsWriter;
+
+        /// <summary>
+        /// Initialize the manager class
+        /// </summary>
+        /// <param name="argument">Argument object with the date need to process</param>
+        public ProcessManager(Argument argument)
         {
             _argument = argument;
             ReadAppSettings();
@@ -83,17 +114,17 @@ namespace GZipTest.Processor
         /// <returns></returns>
         private ExitCode ValidateArguments()
         {
-            var inputFile = _argument.FileToProcess;
-
-            if (_argument.Command == CommandInput.Decompress)
-            {
-                inputFile = _argument.ZippedFile;
-            }
-
-            if (!File.Exists(inputFile))
+            if (!File.Exists(_argument.FileToProcess))
             {
                 return ExitCode.InputFileDoesNotExists;
             }
+
+            if (File.Exists(_argument.OutcomeFile))
+            {
+                return ExitCode.OutcommeFileExists;
+            }
+
+
             return ExitCode.OK;
         }
 
@@ -101,7 +132,7 @@ namespace GZipTest.Processor
         /// Entry point of the application
         /// </summary>
         /// <returns><c>ExitCode</c> with the result of the operations</returns>
-        internal ExitCode RunTask()
+        public ExitCode RunTask()
         {
             ExitCode returnCode = ValidateArguments();
             if (returnCode != ExitCode.OK) { return returnCode; }
@@ -124,6 +155,7 @@ namespace GZipTest.Processor
                         throw new ArgumentException("CommandInput is not valid");
                     }
             }
+
             return returnCode;
         }
 
@@ -137,20 +169,13 @@ namespace GZipTest.Processor
             try
             {
                 mut.WaitOne();
-                if (!File.Exists(_argument.UnZippedFile)) { 
-                    var file = File.Create(_argument.UnZippedFile);
-                    file.Close();
-                }
-                using (FileStream writer = new FileStream(_argument.UnZippedFile, FileMode.Append))
+                if (_argument.Command == CommandInput.Decompress)
                 {
-                    foreach (var item in blocks)
-                    {
-                        var blockFileName = Path.Join(_argument.BlocksFolder, $"{item.Name}.txt");
-                        using var inputFileStream = new FileStream(blockFileName, FileMode.Open);
-                        inputFileStream.CopyTo(writer);
-                    }
+                    return ConcatUnZipped(blocks);
                 }
+
                 return ExitCode.OK;
+
             }
             catch (Exception ex)
             {
@@ -164,16 +189,41 @@ namespace GZipTest.Processor
         }
 
         /// <summary>
+        /// Process the concatenation process of the unziped file
+        /// </summary>
+        /// <param name="blocks">list of blocks to concact</param>
+        /// <returns><c>ExitCode</c> with the result of the operations</returns>
+        private ExitCode ConcatUnZipped(List<FileBlock> blocks)
+        {
+            if (!File.Exists(_argument.OutcomeFile))
+            {
+                var file = File.Create(_argument.OutcomeFile);
+                file.Close();
+            }
+            using (FileStream writer = new FileStream(_argument.OutcomeFile, FileMode.Append))
+            {
+                foreach (var item in blocks)
+                {
+                    var blockFileName = Path.Join(_argument.BlocksFolder, $"{item.Name}.txt");
+                    using var inputFileStream = new FileStream(blockFileName, FileMode.Open);
+                    inputFileStream.CopyTo(writer);
+                }
+            }
+            return ExitCode.OK;
+        }
+
+        /// <summary>
         /// Starts the zip process of the file
         /// </summary>
         /// <returns><c>ExitCode</c> with the result of the operations</returns>
         private ExitCode CompressFile()
         {
-            CleanUpOutput();
             var fileBlocks = CreateBlocks();
+            InitializeFiles();
+            treadsWriter = new FileStream(_argument.OutcomeFile, FileMode.Append);
             if (ProcessBlocks(fileBlocks) == ExitCode.OK)
             {
-                SaveBlocks(fileBlocks);
+                CreateOutcomeFile(fileBlocks);
             }
             return _threadStatus;
         }
@@ -189,35 +239,47 @@ namespace GZipTest.Processor
             return returnCode;
         }
 
-        /// <summary>
-        /// For the Decompress process load the blocks of the file based on main file
-        /// </summary>
-        /// <returns>
-        /// <c>List<FileBlock></c> with the data of the blocks
-        /// </returns>
         private List<FileBlock> GetBlocksFromFiles()
         {
-            using (StreamReader reader = new StreamReader(_argument.ZippedFile))
+            using BinaryReader file = new BinaryReader(File.Open(_argument.FileToProcess, FileMode.Open));
+            file.BaseStream.Seek(0, SeekOrigin.Begin);
+            byte[] data = file.ReadBytes(_offset + 2);
+            int lenght = BitConverter.ToInt32(data);
+            file.BaseStream.Seek(_offset+2, SeekOrigin.Begin);
+            var blocksData = file.ReadBytes(lenght);
+            if (blocksData[0] != 91)
             {
-                var deserializedFileBlocks = new List<FileBlock>();
-                var ms = new MemoryStream(Encoding.UTF8.GetBytes(reader.ReadToEnd()));
-                var ser = new DataContractJsonSerializer(deserializedFileBlocks.GetType());
-                deserializedFileBlocks = ser.ReadObject(ms) as List<FileBlock>;
-                ms.Close();
-                return deserializedFileBlocks;
+                file.BaseStream.Seek(_offset + 3, SeekOrigin.Begin);
+                blocksData = file.ReadBytes(lenght);
             }
+            var str = Encoding.Default.GetString(blocksData);
+            var deserializedFileBlocks = new List<FileBlock>();
+            using var ms = new MemoryStream(blocksData.ToArray());
+            var ser = new DataContractJsonSerializer(deserializedFileBlocks.GetType());
+            deserializedFileBlocks = ser.ReadObject(ms) as List<FileBlock>;
+            ms.Close();
+            return deserializedFileBlocks;
         }
+
 
         /// <summary>
         /// When zipping, deleted the blocks folder and its content if exists
         /// </summary>
-        private void CleanUpOutput()
+        private void InitializeFiles()
         {
-            if (Directory.Exists(_argument.BlocksFolder))
+            if (File.Exists(_argument.OutcomeFile))
             {
-                Directory.Delete(_argument.BlocksFolder, true);
+                File.Delete(_argument.OutcomeFile);
             }
-            Directory.CreateDirectory(_argument.BlocksFolder);
+
+            if (!Directory.Exists(_argument.BlocksFolder))
+            {
+                Directory.CreateDirectory(_argument.BlocksFolder);
+            }
+            var data = Encoding.ASCII.GetBytes(new string(' ', (int)_argument.HeaderSize));
+            FileStream writer = new FileStream(_argument.OutcomeFile, FileMode.Create);
+            using BinaryWriter streamGenerator = new BinaryWriter(writer);
+            streamGenerator.Write(data);
         }
 
         /// <summary>
@@ -234,6 +296,7 @@ namespace GZipTest.Processor
                 Semaphore _writerPool = new Semaphore(0, 2);
                 Mutex writerMutex = new Mutex();
                 List<List<WaitHandle>> writerProcessWaiter = new List<List<WaitHandle>>();
+
                 while (currentCount < blocks.Count)
                 {
                     if ((currentCount + _blockNumber) > blocks.Count)
@@ -249,12 +312,13 @@ namespace GZipTest.Processor
                     {
                         ManualResetEvent waitHandle = new ManualResetEvent(false);
                         blockProcessWaiter.Add(waitHandle);
-                        ProcessZip zip = new ProcessZip(_argument, item, _pool, _blockSize, _mut);
-                        zip.RaiseError += Zip_RaiseError;
-                        CancelAllThreads += zip.CancelThread;
+                        var processor = GzipFactory.CreateClass(_argument, item, _pool, _blockSize, _readerMutex, _writerMutex, treadsWriter);
+                        processor.RaiseError += Zip_RaiseError;
+                        CancelAllThreads += processor.CancelThread;
+                        DisposeAllThreads += processor.CancelThread;
                         Thread blockThread = new Thread(new ThreadStart(() =>
                         {
-                            zip.ProcessBlock();
+                            processor.StartProcess();
                             waitHandle.Set();
                         }));
                         blockThread.Start();
@@ -265,23 +329,19 @@ namespace GZipTest.Processor
                     currentCount += _blockNumber;
 
                     ManualResetEvent writerWaitHandle = new ManualResetEvent(false);
-
-                    if (_argument.Command == CommandInput.Decompress)
+                    if (blocks.Count > 64)
                     {
-                        if (blocks.Count > 64)
-                        {
-                            Thread fileWriterThread = new Thread(new ThreadStart(() =>
-                            {
-                                ConcatBlocks(blockToProcess, writerMutex);
-                                writerWaitHandle.Set();
-                            }));
-                            fileWriterThread.Start();
-                            AddWaitHandler(writerProcessWaiter, writerWaitHandle);
-                        }
-                        else
+                        Thread fileWriterThread = new Thread(new ThreadStart(() =>
                         {
                             ConcatBlocks(blockToProcess, writerMutex);
-                        }
+                            writerWaitHandle.Set();
+                        }));
+                        fileWriterThread.Start();
+                        AddWaitHandler(writerProcessWaiter, writerWaitHandle);
+                    }
+                    else
+                    {
+                        ConcatBlocks(blockToProcess, writerMutex);
                     }
                 }
 
@@ -289,6 +349,7 @@ namespace GZipTest.Processor
                 {
                     WaitHandle.WaitAll(item.ToArray());
                 }
+                DisposeAllThrreads();
                 return _threadStatus;
 
             }
@@ -297,6 +358,14 @@ namespace GZipTest.Processor
                 Console.WriteLine($"Error: {ex.Message}, stack trace: {ex.StackTrace}");
                 Zip_RaiseError("Starting");
                 return ExitCode.ApplicationError;
+            }
+            finally
+            {
+                if (treadsWriter != null)
+                {
+                    treadsWriter.Flush();
+                    treadsWriter.Close();
+                }
             }
         }
 
@@ -327,6 +396,18 @@ namespace GZipTest.Processor
             }
         }
 
+
+        /// <summary>
+        /// Start  the dispose action of all treads
+        /// event
+        /// </summary>
+        /// <param name="blockName"></param>
+        private void DisposeAllThrreads()
+        {   
+            EventHandler handler = DisposeAllThreads;
+            handler?.Invoke(this, null);
+        }
+
         /// <summary>
         /// When an error occured processing a block, 
         /// all the other blocks that are pending to be executed are cancelled using the 
@@ -351,39 +432,60 @@ namespace GZipTest.Processor
             long fileLength = file.Length;
             long fileInMb = fileLength / _blockSize;
             long remaining = fileLength - (fileInMb * _blockSize);
-            List<FileBlock> chunks = new List<FileBlock>();
+            List<FileBlock> blocks = new List<FileBlock>();
             for (int i = 0; i < fileInMb; i++)
             {
-                chunks.Add(new FileBlock()
+                blocks.Add(new FileBlock()
                 {
                     Name = $"{_argument.FileName}_block_{i}",
                     Order = i,
                     Size = (int)_blockSize
                 });
             }
-            chunks.Add(new FileBlock()
+            blocks.Add(new FileBlock()
             {
                 Name = $"{_argument.FileName}_block_{fileInMb}",
                 Order = fileInMb,
                 Size = (int)remaining
             });
-            return chunks;
+            _argument.HeaderSize = (blocks.Count * _blockTextSize) + _offset;
+            return blocks;
         }
 
         /// <summary>
         /// Save an object <c>List<FileBlock></c> to a file that will be used for unzip
         /// </summary>
         /// <returns><c>List<FileBlock></c> blocks created during unzip process</returns>
-        private void SaveBlocks(List<FileBlock> blocks)
+        private void CreateOutcomeFile(List<FileBlock> blocks)
         {
             if (blocks == null) return;
             DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(List<FileBlock>));
-            using var ms = new MemoryStream();
-            serializer.WriteObject(ms, blocks);
-            using var writer = new StreamWriter($"{_argument.FilePath}\\{_argument.FileName}.gz");
-            writer.Write(Encoding.Default.GetString(ms.ToArray()));
+            using var blocksData = new MemoryStream();
+            serializer.WriteObject(blocksData, blocks);            
+            var blockStr = Encoding.Default.GetString(blocksData.ToArray());
+            using FileStream writer = new FileStream(_argument.OutcomeFile, FileMode.Open);
+            using BinaryWriter binaryWriter = new BinaryWriter(writer);
+            var lenghtAsBits = BitConverter.GetBytes(blockStr.Length);
+            writer.Position = 0;
+            binaryWriter.Write(lenghtAsBits[0]);
+            binaryWriter.Write(lenghtAsBits[1]);
+            binaryWriter.Write(lenghtAsBits[2]);
+            binaryWriter.Write(lenghtAsBits[3]);
+            writer.Position = 10;
+            binaryWriter.Write(blockStr);
         }
 
+        public void Dispose()
+        {
+            DisposeAllThrreads();
+
+            if (treadsWriter != null)
+            {
+                treadsWriter.Close();
+                treadsWriter = null;
+            }
+
+        }
     }
 }
 

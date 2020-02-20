@@ -1,8 +1,7 @@
 {
   "profiles": {
     "GZipTest": {
-      "commandName": "Project",
-      "commandLineArgs": "deCOmprESS \"C:\\github\\GzipTest\\Files\\Manifest.xml\""
+      "commandName": "Project"
     }
   }
 }

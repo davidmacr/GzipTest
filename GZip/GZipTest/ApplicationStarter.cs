@@ -8,37 +8,86 @@ using GZipTest.Processor;
 
 namespace GZipTest
 {
-    internal class ApplicationStarter
+    public class ApplicationStarter
     {
         /// <summary>
         /// Number of parameters required by the application
         /// </summary>
-        const int ArgumentCount = 2;
+        const int ArgumentCount = 3;
         /// <summary>
         /// Entry point of the app
         /// </summary>
         /// <param name="args">list of arguments</param>
         /// <returns><c>ExitCode</c> with the result of the operations</returns>
-        internal int StartApp(string[] args)
+        public int StartApp(string[] args)
         {
-            var isValid = ValidateParamters(args);
+            try
+            {
+                var isValid = ValidateParamters(args);
 
-            if (isValid != ExitCode.OK)
-            {
-                ShowApplicationExample();
-                return (int)isValid;
+                if (isValid != ExitCode.OK)
+                {
+                    ShowApplicationExample();
+                    return ShowApplicationResult(isValid);
+                }
+                Argument actionToExecute = ParseParameters(args);
+                var startTime = DateTime.Now;
+                using (var manager = new ProcessManager(actionToExecute))
+                {
+                    ExitCode returnValue = manager.RunTask();
+
+                    if (returnValue == ExitCode.OK)
+                    {
+                        var endTime = DateTime.Now;
+                        Console.WriteLine($"Started at {startTime.ToString()} -- Ended at: {endTime.ToString()}");
+                    }
+                    return ShowApplicationResult(returnValue);
+                }
             }
-            Argument actionToExecute = ParseParameters(args);
-            var startTime = DateTime.Now;
-            var manager = new ProcessManager(actionToExecute);
-            ExitCode returnValue = manager.RunTask();
-            if (returnValue == ExitCode.OK)
+            catch (Exception ex)
             {
-                var endTime = DateTime.Now;
-                Console.WriteLine($"Started at {startTime.ToString()} -- Ended at: {endTime.ToString()}");
+                Console.WriteLine($"There was a fatal error running the application. Error: {ex.Message}");
+                return ShowApplicationResult(ExitCode.ApplicationError);
             }
-            return (int)returnValue;
         }
+
+
+        public int ShowApplicationResult(ExitCode code)
+        {
+            switch (code)
+            {
+                case ExitCode.OK:
+                    return 0;
+                case ExitCode.ApplicationError:
+                    Console.WriteLine($"There was an unexpected exeption during the execution, Error Code: {(int)ExitCode.ApplicationError}");
+                    return 1;
+                case ExitCode.MissingParameter:
+                    Console.WriteLine($"Parameters are missing or were introduced incorrectly, Error Code: {(int)ExitCode.MissingParameter}");
+                    return 1;
+                case ExitCode.InvalidCommand:
+                    Console.WriteLine($"This application only allow compress and decompress commands, Error Code: {(int)ExitCode.InvalidCommand}");
+                    return 1;
+                case ExitCode.InvalidFileName:
+                    Console.WriteLine($"File name is invalid or do not exists, Error Code: {(int)ExitCode.ApplicationError}");
+                    return 1;
+                case ExitCode.ThreadsCancelledByError:
+                    Console.WriteLine($"The process was cancelled due to unexpected exceptions, Error Code: {(int)ExitCode.ThreadsCancelledByError}");
+                    return 1;
+                case ExitCode.FileNameDoesNotExist:
+                    Console.WriteLine($"File to process do not exists, Error Code: {(int)ExitCode.FileNameDoesNotExist}");
+                    return 1;
+                case ExitCode.InputFileDoesNotExists:
+                    Console.WriteLine($"File to process do not exists, Error Code: {(int)ExitCode.InputFileDoesNotExists}");
+                    return 1;
+                case ExitCode.OutcommeFileExists:
+                    Console.WriteLine($"Outcome file exists, Error Code: {(int)ExitCode.OutcommeFileExists}");
+                    return 1;
+
+                default:
+                    return 1;
+            }
+        }
+
 
         /// <summary>
         /// Check that parameters has valid values
@@ -68,7 +117,17 @@ namespace GZipTest
 
             if (string.IsNullOrEmpty(args[1]))
             {
-                Console.WriteLine("Argument file is not defined");
+                var message = "Original file parameter is not valid";
+                if (command == CommandInput.Decompress) { message = "Archive file parameter is not valid"; }
+                Console.WriteLine(message);
+                return ExitCode.InvalidFileName;
+            }
+
+            if (string.IsNullOrEmpty(args[2]))
+            {
+                var message = "Archive file parameter is not valid";
+                if (command == CommandInput.Decompress) { message = "Deconmpressing file parameter is not valid"; }
+                Console.WriteLine(message);
                 return ExitCode.InvalidFileName;
             }
 
@@ -90,9 +149,9 @@ namespace GZipTest
                     "compress" => CommandInput.Compress,
                     _ => throw new ArgumentException($"Invalid parameter {args[0]}"),
                 },
-                FileToProcess = args[1]
+                FileToProcess = args[1],
+                OutcomeFile = args[2]
             };
-
 
             return data;
         }

@@ -5,11 +5,13 @@ using System.Text;
 namespace GZipTest.Data
 {
     [Serializable]
-    internal class FileBlock
+    public class FileBlock
     {
         public string Name { get; set; }
         public long Order { get; set; }
         public int Size { get; set; }
         public string Outputfile { get; set; }
+        public int ZippedSize { get; set; }
+        public long OffSet { get; set; }
     }
 }

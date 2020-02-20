@@ -22,20 +22,23 @@ namespace GZipTest.Processor
         readonly Argument _argument;
         readonly FileBlock _fileBlock;
         readonly Semaphore _pool;
-        readonly Mutex _mut;
+        readonly Mutex _readerMutex;
+        readonly Mutex _writerMutex;
 
         static BinaryReader _fileData;
         bool _canceled = false;
         internal event ErrorOccured RaiseError;
 
 
-        internal ProcessZip(Argument argument, FileBlock fileBlock, Semaphore pool, long blockSize, Mutex mut)
+        internal ProcessZip(Argument argument, FileBlock fileBlock, Semaphore pool, long blockSize, Mutex reader, Mutex writer)
         {
             _argument = argument;
             _fileBlock = fileBlock;
             _pool = pool;
             _blockSize = blockSize;
-            _mut = mut;
+            _readerMutex = reader;
+            _writerMutex = writer;
+
         }
 
         /// <summary>
@@ -43,7 +46,7 @@ namespace GZipTest.Processor
         /// </summary>
         /// <remarks>
         /// Uses the instance of _pool to don't overkill the processor
-        /// Uses the instance of _mut to control the access to risk code
+        /// Uses the instance of _readerMutex to control the access to risk code
         /// </remarks>
         internal void ProcessBlock()
         {
@@ -62,12 +65,12 @@ namespace GZipTest.Processor
                 }
                 else if (_argument.Command == CommandInput.Decompress)
                 {
-                    UnZipBlock();
+                    UnZipBlock2();
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error creating block {_fileBlock.Name}, Error: {ex.Message}");
+                Console.WriteLine($"Error creating block {_fileBlock.Name}, Error: {ex.Message}, Stack Trace: {ex.StackTrace}");
                 RaiseError(_fileBlock.Name);
             }
             finally
@@ -86,8 +89,42 @@ namespace GZipTest.Processor
             int required = _fileBlock.Size;
             byte[] data = GetData(offset, required);
             WriteZip(data);
+            ConcatZipped();
             Console.WriteLine($"Block {_fileBlock.Name} created, Size: {_fileBlock.Size}");
         }
+
+
+        private ExitCode ConcatZipped()
+        {            
+            var fileName = $"{_argument.ZippedFile}_2";
+            if (!Directory.Exists(_argument.BlocksFolder))
+            {
+                Directory.CreateDirectory(_argument.BlocksFolder);
+            }
+            if (!File.Exists(fileName))
+            {
+                var file = File.Create(fileName);
+                file.Close();
+            }
+            var blockName = $"{_argument.BlocksFolder}\\{_fileBlock.Name}";            
+            using var reader = File.Open(blockName, FileMode.Open);
+            byte[] blockContent = new byte[reader.Length];            
+            reader.Read(blockContent, 0, (int)reader.Length);
+
+            _writerMutex.WaitOne();
+            using var writer = File.Open(fileName, FileMode.Append);
+            _fileBlock.OffSet = (int)writer.Length;
+            writer.Write(blockContent, 0, (int)reader.Length);
+            writer.Flush();
+            writer.Close();
+            _writerMutex.ReleaseMutex();
+
+            _fileBlock.ZippedSize = (int)reader.Length;
+            
+            return ExitCode.OK;
+        }
+
+
 
         /// <summary>
         /// Create a file unziped based on a zipped file
@@ -103,18 +140,37 @@ namespace GZipTest.Processor
             Console.WriteLine($"Block {_fileBlock.Name} created, Size: {_fileBlock.Size}");
         }
 
+        private void UnZipBlock2()
+        {
+            if (!Directory.Exists(_argument.BlocksFolder))
+            {
+                Directory.CreateDirectory(_argument.BlocksFolder);
+            }
+            _fileBlock.Outputfile = Path.Join(_argument.BlocksFolder, $"{_fileBlock.Name}.txt");
+            var blockData = GetData(_fileBlock.OffSet, _fileBlock.ZippedSize);
+            using var inputFileStream = new MemoryStream(blockData);
+            using var outputFileStream = new FileStream(_fileBlock.Outputfile, FileMode.Create);
+            using var gzipStream = new GZipStream(inputFileStream, CompressionMode.Decompress);
+            gzipStream.CopyTo(outputFileStream);
+            Console.WriteLine($"Block {_fileBlock.Name} created, Size: {_fileBlock.Size}");
+        }
+
+
         /// <summary>
         /// having an <c>byte[]</byte> create a gziped file 
         /// </summary>
         /// <param name="data"><c>byte[]</c>with the date to gzip</param>
         private void WriteZip(byte[] data)
         {
+            var fileName = Path.Join(_argument.BlocksFolder, _fileBlock.Name);
             using MemoryStream writer = new MemoryStream();
-            using FileStream compressedFileStream = File.Create(Path.Join(_argument.BlocksFolder, _fileBlock.Name));
+            using FileStream compressedFileStream = File.Create(fileName);
             using GZipStream compressionStream = new GZipStream(compressedFileStream, CompressionMode.Compress);
+            var fileData = new FileInfo(fileName);
             writer.Write(data);
             writer.Position = 0;
             writer.CopyTo(compressionStream);
+            _fileBlock.ZippedSize = data.Length;
         }
 
         /// <summary>
@@ -125,14 +181,19 @@ namespace GZipTest.Processor
         /// <returns></returns>
         private byte[] GetData(long offset, int required)
         {
-            _mut.WaitOne();
+            _readerMutex.WaitOne();
             if (_fileData == null)
             {
-                _fileData = new BinaryReader(File.Open(_argument.FileToProcess, FileMode.Open));
+                var fileName = _argument.FileToProcess;
+                if (_argument.Command == CommandInput.Decompress)
+                {
+                    fileName = $"{_argument.ZippedFile}_2"; //TODO: Review this
+                }
+                _fileData = new BinaryReader(File.Open(fileName, FileMode.Open));
             }
             _fileData.BaseStream.Seek(offset, SeekOrigin.Begin);
             byte[] data = _fileData.ReadBytes(required);
-            _mut.ReleaseMutex();
+            _readerMutex.ReleaseMutex();
             return data;
         }
 
