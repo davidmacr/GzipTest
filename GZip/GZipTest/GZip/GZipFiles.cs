@@ -63,7 +63,8 @@ namespace GZipTest.GZip
             var fileName = Path.Join(_argument.BlocksFolder, _fileBlock.Name);
             using MemoryStream writer = new MemoryStream();
             using FileStream compressedFileStream = File.Create(fileName);
-            using GZipStream compressionStream = new GZipStream(compressedFileStream, CompressionMode.Compress);
+            using GZipStream compressionStream = new GZipStream(compressedFileStream, CompressionMode.Compress);           
+
             var fileData = new FileInfo(fileName);
             writer.Write(data);
             writer.Position = 0;

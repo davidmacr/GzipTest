@@ -91,6 +91,8 @@ namespace GZipTest.Processor
             if (ConfigurationManager.AppSettings["fileBlockSize"] != null)
             {
                 _blockSize = long.Parse(ConfigurationManager.AppSettings["fileBlockSize"]);
+                _blockSize = (_blockSize * 1024) * 1024;
+
             }
 
             if (ConfigurationManager.AppSettings["concurrentBlocks"] != null)
@@ -235,24 +237,39 @@ namespace GZipTest.Processor
         private ExitCode DecompressFile()
         {
             var fileBlocks = GetBlocksFromFiles();
+
+            if (fileBlocks.Count == 0)
+            {
+                return ExitCode.CompressFileIsInvalid;
+            }
+
+
             var returnCode = ProcessBlocks(fileBlocks);
             return returnCode;
         }
 
         private List<FileBlock> GetBlocksFromFiles()
         {
+            int offsetPlus =2;
+            int maxTries = 5;
             using BinaryReader file = new BinaryReader(File.Open(_argument.FileToProcess, FileMode.Open));
             file.BaseStream.Seek(0, SeekOrigin.Begin);
-            byte[] data = file.ReadBytes(_offset + 2);
+            byte[] data = file.ReadBytes(_offset + offsetPlus);
             int lenght = BitConverter.ToInt32(data);
-            file.BaseStream.Seek(_offset+2, SeekOrigin.Begin);
+            file.BaseStream.Seek(_offset+ offsetPlus, SeekOrigin.Begin);
             var blocksData = file.ReadBytes(lenght);
-            if (blocksData[0] != 91)
+            while (blocksData[0] != 91 && maxTries>0)
             {
-                file.BaseStream.Seek(_offset + 3, SeekOrigin.Begin);
+                maxTries--;
+                offsetPlus++;
+                file.BaseStream.Seek(_offset + offsetPlus, SeekOrigin.Begin);
                 blocksData = file.ReadBytes(lenght);
+                //var str = Encoding.Default.GetString(blocksData);
             }
-            var str = Encoding.Default.GetString(blocksData);
+            if (maxTries <= 0)
+            {
+                return new List<FileBlock>();
+            }
             var deserializedFileBlocks = new List<FileBlock>();
             using var ms = new MemoryStream(blocksData.ToArray());
             var ser = new DataContractJsonSerializer(deserializedFileBlocks.GetType());
