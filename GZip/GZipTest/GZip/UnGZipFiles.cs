@@ -17,7 +17,7 @@ namespace GZipTest.GZip
         }
 
         public void StartProcess()
-        {            
+        {
             if (_canceled)
             {
                 return;

@@ -82,7 +82,9 @@ namespace GZipTest
                 case ExitCode.OutcommeFileExists:
                     Console.WriteLine($"Outcome file exists, Error Code: {(int)ExitCode.OutcommeFileExists}");
                     return 1;
-
+                case ExitCode.CompressFileIsInvalid:
+                    Console.WriteLine($"COmpress file has an invalid format: {(int)ExitCode.CompressFileIsInvalid}");
+                    return 1;
                 default:
                     return 1;
             }

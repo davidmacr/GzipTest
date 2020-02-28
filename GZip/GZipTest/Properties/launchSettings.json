@@ -1,7 +1,8 @@
 {
   "profiles": {
     "GZipTest": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "decompress \"C:\\Github\\GzipTest\\Files\\superhugeFile_32.gz\" \"C:\\Github\\GzipTest\\Files\\superhugeFile_32.txt\""
     }
   }
 }

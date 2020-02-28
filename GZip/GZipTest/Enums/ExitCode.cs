@@ -18,5 +18,6 @@ namespace GZipTest.Enums
         FileNameDoesNotExist = 6,
         InputFileDoesNotExists = 7,
         OutcommeFileExists = 8,
+        CompressFileIsInvalid = 9,
     }
 }
